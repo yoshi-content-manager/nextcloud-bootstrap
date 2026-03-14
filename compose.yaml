@@ -1,0 +1,93 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=a6eadaa05d99a22dd6d21fe9b8c8b2a6dbe51f1f8b85c3e251a37795525c6a58
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextcloud
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:alpine
+    restart: always
+
+  app:
+    image: nextcloud:32-apache
+    restart: always
+    ports:
+      - 8081:80
+    env_file:
+      - .env
+    volumes:
+      - ./skeleton:/var/www/custom_skeleton
+      # APPS
+      # - ./apps/sharing:/var/www/html/custom_apps/sharing:ro
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextcloud
+      - POSTGRES_PASSWORD=a6eadaa05d99a22dd6d21fe9b8c8b2a6dbe51f1f8b85c3e251a37795525c6a58
+      - REDIS_HOST=redis
+      - OBJECTSTORE_S3_BUCKET=nextcloud
+      - OBJECTSTORE_S3_REGION=us-east-1
+      - OBJECTSTORE_S3_HOST=minio
+      - OBJECTSTORE_S3_PORT=9000
+      - OBJECTSTORE_S3_SSL=false
+      - OBJECTSTORE_S3_USEPATH_STYLE=true
+      - OBJECTSTORE_S3_AUTOCREATE=true
+      - OBJECTSTORE_S3_KEY=${MINIO_ROOT_USER}
+      - OBJECTSTORE_S3_SECRET=${MINIO_ROOT_PASSWORD}
+      # Reverse proxy (native reverse-proxy.config.php)
+      # - OVERWRITEPROTOCOL=https
+      # - OVERWRITEHOST=${NC_DOMAIN}
+      - TRUSTED_PROXIES=${TRUSTED_PROXY_CIDR}
+      - FORWARDED_FOR_HEADERS=HTTP_X_FORWARDED_FOR
+      # Misc
+      - NEXTCLOUD_DEFAULT_PHONE_REGION=US
+    depends_on:
+      - db
+      - redis
+      - minio
+
+  cron:
+    image: nextcloud:apache
+    restart: always
+    entrypoint: /cron.sh
+    env_file: .env
+    environment:
+      - POSTGRES_HOST=db
+      - REDIS_HOST=redis
+    volumes:
+      - nextcloud_data:/var/www/html
+    depends_on:
+      - db
+      - redis
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    ports:
+      - 9000:9000
+      - 9001:9001
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARED_TOKEN}
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  nextcloud_data:
+  minio_data:
