@@ -1,2 +1,6 @@
 .env
+.env.*
 extras/ff*
+node_modules
+pipeline_scratch
+nextcloud_data
